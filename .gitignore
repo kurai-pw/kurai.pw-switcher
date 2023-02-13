@@ -1,0 +1,10 @@
+*.py[cod]
+__pycache__/
+.idea/
+
+# Build files.
+build/
+dist/
+
+# App files.
+*.ini

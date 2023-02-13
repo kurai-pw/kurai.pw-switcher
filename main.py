@@ -2,11 +2,13 @@ import os
 import sys
 import configparser
 
-from subprocess import Popen
+from subprocess import Popen, check_call
 from time import sleep
-from PyQt5 import QtGui
+from webbrowser import open as webbrowser_open
 from PyQt5.QtCore import Qt, QSize
-from PyQt5.QtGui import QPixmap, QIcon, QFont, QFontDatabase
+# from PyQt5.QtCore.Qt import FramelessWindowHint, CursorShape
+# from PyQt5.QtCore.Qt. import PointingHandCursor
+from PyQt5.QtGui import QIcon, QFont, QFontDatabase, QCursor
 from PyQt5.QtWidgets import (
     QApplication,
     QLineEdit,
@@ -14,8 +16,7 @@ from PyQt5.QtWidgets import (
     QPushButton,
     QFrame,
     QLabel,
-    QFileDialog,
-    QMessageBox
+    QFileDialog
 )
 
 
@@ -28,9 +29,10 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 
-class kuraiApp(QWidget):
-    APP_WIDTH = 560
-    APP_HEIGHT = 220
+class CSS:
+    """
+    Class with the app CSS.
+    """
 
     APP_CSS = """
         background-color: #21201E;
@@ -51,6 +53,10 @@ class kuraiApp(QWidget):
         QPushButton::hover {
             color: #FFE7FC;
         }
+    """
+
+    LOGO_CSS = """
+        border: none;
     """
 
     LABEL_CSS = """
@@ -76,8 +82,36 @@ class kuraiApp(QWidget):
         border: 2px solid #333;
     """
 
+    ERROR_MESSAGE_CSS = """
+        color: red;
+        font-size: 12px;
+    """
+
+    APP_VERSION_CSS = """
+        color: #444444;
+        font-size: 14px;
+    """
+
+
+class kuraiApp(QWidget):
+    """
+    Switcher app based on PyQt5.
+    """
+
+    APP_WIDTH = 560
+    APP_HEIGHT = 220
+
+    APP_VERSION = 'v1.1a'
+
+    SERVER_DOMAIN = 'kurai.pw'
+    SERVER_URL = 'https://kurai.pw/'
+
+    # .ini config file name
+    CONFIG_FILE_NAME = '.kurai_config.ini'
+
     def __init__(self):
         super().__init__(None)
+        self.CSS = CSS()
 
         self.osu_path = self.load_osu_path()
         self.server = 'bancho'
@@ -86,81 +120,132 @@ class kuraiApp(QWidget):
         self.osu_path_qline = None
         self.switch_button = None
 
+        # Variable used to drag the window.
+        self.offset = 0
+
+        self.fonts = self.load_fonts()
         self.setup_layout()
 
+    @staticmethod
+    def load_fonts():
+        """
+        Load custom font.
+        """
+
+        light_font = QFontDatabase.addApplicationFont(resource_path("assets/Poppins-Light.ttf"))
+        light_font = QFontDatabase.applicationFontFamilies(light_font)
+
+        regular_font = QFontDatabase.addApplicationFont(resource_path("assets/Poppins-Regular.ttf"))
+        regular_font = QFontDatabase.applicationFontFamilies(regular_font)
+
+        return {
+            'light': QFont(light_font[0], 32),
+            'regular': QFont(regular_font[0], 32)
+        }
 
     def setup_layout(self):
-        self.setWindowIcon(QtGui.QIcon(resource_path('assets/kurai.png')))
+        """
+        Creating UI objects.
+        """
+
+        # Windows settings.
+        self.setWindowIcon(QIcon(resource_path('assets/kurai.png')))
         self.setWindowTitle('osu!kurai switcher')
         self.setWindowFlag(Qt.FramelessWindowHint)
         self.setFixedWidth(self.APP_WIDTH)
         self.setFixedHeight(self.APP_HEIGHT)
-        self.setStyleSheet(self.APP_CSS)
-
-        # Load custom font.
-        font = QFontDatabase.addApplicationFont(resource_path("assets/Poppins-Light.ttf"))
-        font = QFontDatabase.applicationFontFamilies(font)
-        font = QFont(font[0], 32)
+        self.setStyleSheet(self.CSS.APP_CSS)
 
         # Top line.
         line = QFrame(self)
         line.setGeometry(0, 0, 560, 4)
-        line.setStyleSheet(self.LINE_CSS)
+        line.setStyleSheet(self.CSS.LINE_CSS)
 
-        close_button = QPushButton('✕', self)
-        close_button.setStyleSheet(self.CLOSE_BUTTON_CSS)
-        close_button.setFixedWidth(30)
-        close_button.setFixedHeight(30)
-        close_button.move(525, 9)
-        close_button.clicked.connect(self.close_program)
+        # Logo icon object.
+        logo = QPushButton(self)
+        logo.setIcon(QIcon(resource_path('assets/kurai_64.png')))
+        logo.setIconSize(QSize(64, 64))
+        logo.setFixedWidth(64)
+        logo.setFixedHeight(64)
+        logo.setGeometry(10, 15, 64, 64)
+        logo.setStyleSheet(self.CSS.LOGO_CSS)
+        logo.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        logo.clicked.connect(lambda: webbrowser_open(self.SERVER_URL))
 
-        logo = QPixmap(resource_path('assets/kurai_64.png'))
+        # Logo label that contain logo icon.
         logo_label = QLabel(self)
-        logo_label.setPixmap(logo)
-        logo_label.setGeometry(10, 15, 64, 64)
+        logo_label.setText('kurai!switcher')
+        logo_label.setStyleSheet(self.CSS.LABEL_CSS)
+        logo_label.setFont(self.fonts['light'])
+        logo_label.setGeometry(85, 38, 150, 20)
 
-        label = QLabel(self)
-        label.setText('kurai!switcher')
-        label.setStyleSheet(self.LABEL_CSS)
-        label.setFont(font)
-        label.setGeometry(85, 38, 150, 20)
-
+        # osu! path line.
         self.osu_path_qline = QLineEdit(self)
         self.osu_path_qline.setPlaceholderText('osu!path')
-        self.osu_path_qline.setStyleSheet(self.OSU_PATH_FIELD_CSS)
-        self.osu_path_qline.move(50, 100)
+        self.osu_path_qline.setStyleSheet(self.CSS.OSU_PATH_FIELD_CSS)
+        self.osu_path_qline.setGeometry(50, 100, 418, 36)
         self.osu_path_qline.setText(self.osu_path)
+        self.osu_path_qline.textChanged.connect(self.set_osu_path)
 
+        # Specify osu! path by select directory (icon-button).
         select_osu_path = QPushButton(self)
         select_osu_path.setIcon(QIcon(resource_path('assets/folder.png')))
         select_osu_path.setIconSize(QSize(20, 20))
         select_osu_path.setFixedWidth(36)
         select_osu_path.setFixedHeight(36)
         select_osu_path.move(464, 100)
-        select_osu_path.setStyleSheet(self.SELECT_OSU_PATH_BUTTON_CSS)
+        select_osu_path.setStyleSheet(self.CSS.SELECT_OSU_PATH_BUTTON_CSS)
+        select_osu_path.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         select_osu_path.clicked.connect(self.file_dialog)
 
+        # Switch server button.
         self.switch_button = QPushButton('Switch to kurai' if self.server == 'bancho' else 'Switch to bancho', self)
-        self.switch_button.setStyleSheet(self.ACTION_BUTTONS_CSS)
-        self.switch_button.setFont(font)
+        self.switch_button.setStyleSheet(self.CSS.ACTION_BUTTONS_CSS)
+        self.switch_button.setFont(self.fonts['regular'])
         self.switch_button.setFixedWidth(200)
         self.switch_button.setFixedHeight(40)
         self.switch_button.move(50, 150)
+        self.switch_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.switch_button.clicked.connect(self.switch_server)
 
+        # Run osu button.
         run_osu_button = QPushButton('Run osu!', self)
-        run_osu_button.setStyleSheet(self.ACTION_BUTTONS_CSS)
-        run_osu_button.setFont(font)
+        run_osu_button.setStyleSheet(self.CSS.ACTION_BUTTONS_CSS)
+        run_osu_button.setFont(self.fonts['regular'])
         run_osu_button.setFixedWidth(200)
         run_osu_button.setFixedHeight(40)
         run_osu_button.move(300, 150)
+        run_osu_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         run_osu_button.clicked.connect(self.run_osu)
 
-    def file_dialog(self):
-        self.osu_path = QFileDialog.getExistingDirectory(self, "Select Directory", self.osu_path)
-        self.set_osu_path()
+        # Close button.
+        close_button = QPushButton('✕', self)
+        close_button.setStyleSheet(self.CSS.CLOSE_BUTTON_CSS)
+        close_button.setFixedWidth(30)
+        close_button.setFixedHeight(30)
+        close_button.move(525, 9)
+        close_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        close_button.clicked.connect(self.close_program)
 
-    def set_osu_path(self):
+        # Version text.
+        version_label = QLabel(self)
+        version_label.setText(self.APP_VERSION)
+        version_label.setStyleSheet(self.CSS.APP_VERSION_CSS)
+        version_label.setFont(self.fonts['regular'])
+        version_label.setGeometry(4, 203, 128, 16)
+
+    def file_dialog(self):
+        self.set_osu_path(QFileDialog.getExistingDirectory(self, "Select Directory", self.osu_path))
+        self.update_osu_path_text()
+
+    def set_osu_path(self, path: str):
+        self.osu_path = path
+        print(path)
+
+    def update_osu_path_text(self):
+        """
+        Update QLine object text @var self.osu_path_qline.
+        """
         self.osu_path_qline.setText(self.osu_path)
 
     def switch_server(self):
@@ -169,25 +254,19 @@ class kuraiApp(QWidget):
 
     def run_osu(self):
         if not self.osu_path:
-            error_dialog = QMessageBox()
-            error_dialog.setIcon(QMessageBox.Critical)
-            error_dialog.setText("Error")
-            error_dialog.setInformativeText('Hello')
-            error_dialog.setWindowTitle("Error")
-            return
+            self.throw_error()
 
         try:
             args = ''
             if self.server == 'bancho':
                 args = ''
             elif self.server == 'kurai':
-                args = '-devserver kurai.pw'
-
+                args = f'-devserver {self.SERVER_DOMAIN}'
 
             # Run osu!.
             Popen([self.osu_path + '/osu!.exe'] + args.split())
         except Exception as e:
-            print(e)
+            pass # @TODO Add error message.
 
         self.close_program()
 
@@ -202,25 +281,25 @@ class kuraiApp(QWidget):
         # Close app.
         self.close()
 
-    @staticmethod
-    def load_osu_path():
+    def load_osu_path(self):
         config = configparser.ConfigParser()
-        config.read('kurai_config.ini')
+        config.read(self.CONFIG_FILE_NAME)
 
         try:
             return config.get('settings', 'osu_path')
         except Exception as e:
             return ''
 
-
-    @staticmethod
-    def save_config(osu_path: str):
+    def save_config(self, osu_path: str):
         config = configparser.ConfigParser()
         config.add_section('settings')
         config.set('settings', 'osu_path', osu_path)
 
-        with open('kurai_config.ini', 'w') as config_file:  # save
+        with open(self.CONFIG_FILE_NAME, 'w') as config_file:  # save
             config.write(config_file)
+
+        # Make config file invisible.
+        check_call(['attrib', '+H', self.CONFIG_FILE_NAME])
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:

@@ -29,4 +29,4 @@ exe = EXE(pyz,
           strip=False,
           upx=True,
           runtime_tmpdir=None,
-          console=False , icon='kurai_wt_96.ico')
+          console=False, icon='assets/icon.ico')
